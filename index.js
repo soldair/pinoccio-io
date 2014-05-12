@@ -42,9 +42,27 @@ function PinoccioIO(opts){
   if (!(this instanceof PinoccioIO)) {
     return new PinoccioIO(opts);
   }
+  var z = this;
  
-  Emitter.call(this);
+  Emitter.call(z);
 
+  // add analogPins and pins object correctly!
+
+  z._api = pinoccio(opts.token);
+
+  z.troop = opts.troop;
+  z.scout = opts.scout;
+
+  z._api.rest({url:'v1/'+opts.troop+'/'+opts.scout},function(err,data){
+
+    if(err) return z.emit('error',err);
+
+    z.emit('ready',data);
+
+    // todo open event sync.
+    // figure out what events i can emit to make this awesome!
+
+  });
 }
 
 PinoccioIO.prototype = new Emitter;
@@ -54,16 +72,12 @@ xtend(PinoccioIO.prototype,{
   HIGH:1,
   LOW:1,
   pins:[],
+  // handle to api.
+  _api:false,
   // placeholder for setSamplingInterval
   _interval:19,
   // state 
   _state:{}
-});
-
-
-
-{
-  pins:{},
   pinMode:function(){
 
   },
@@ -73,17 +87,19 @@ xtend(PinoccioIO.prototype,{
   digitalWrite:function(){
 
   },
-  analogRead:function(){
-
+  analogRead:function(pin){
+    var pin = pinnum(pin);
+    
   },
   digtalRead:function(){
 
   },
   servoWrite:function(){
-
-  },
-  
+    
+  }
 });
+
+Pinoccio.prototype.servoWrite = analogWrite;
 
 
 Pinoccio.prototype.setSamplingInterval = function(interval) {

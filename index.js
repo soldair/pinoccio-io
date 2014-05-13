@@ -1,9 +1,13 @@
 // woo
 var pinoccio = require('pinoccio')
 var Emitter = require("events").EventEmitter;
+var util = require('util');
 var xtend = require('xtend');
 var pinnum = require('./lib/pinnum');
 
+// there are more pins but they are already connected to a bunch of cool things.
+// im not sure the right way to manage it.
+// https://github.com/Pinoccio/core-pinoccio/blob/master/avr/variants/pinoccio/pins_arduino.h
 var pins = [
   { id: "D2", modes: [0, 1, 3, 4] },
   { id: "D3", modes: [0, 1, 3, 4] },
@@ -12,7 +16,6 @@ var pins = [
   { id: "D6", modes: [0, 1] },
   { id: "D7", modes: [0, 1] },
   { id: "D8", modes: [0, 1] },
-
   { id: "A0", modes: [0, 1, 2] },
   { id: "A1", modes: [0, 1, 2] },
   { id: "A2", modes: [0, 1, 2] },
@@ -46,8 +49,6 @@ function PinoccioIO(opts){
  
   Emitter.call(z);
 
-  // add analogPins and pins object correctly!
-
   z._api = pinoccio(opts.token);
 
   z.troop = opts.troop;
@@ -57,15 +58,82 @@ function PinoccioIO(opts){
 
     if(err) return z.emit('error',err);
 
-    z.emit('ready',data);
+    z.sync = z._api.sync();
 
-    // todo open event sync.
-    // figure out what events i can emit to make this awesome!
+    z.data = {};// sync data object.
 
-  });
+    // board is ready after i get  available && digital && analog events.
+    // TODO FIND GREAT Way to message when a scout may be off / unavailable 
+    var isReady = function(){
+      return (z.data.available && z.data.available.available) && z.data.digital && z.data.analog;
+    };
+
+
+    z.sync.on('data',function(data){
+      // i care about 3 api events
+      //
+      // available: {"scout":1,"available":1,"reply":"11\n","_t":1399594464252,"type":"available"}
+      // digital:   {"type":"digital","mode":[-1,-1,-1,-1,2,-1,-1],"state":[-1,-1,-1,-1,0,-1,-1],"_t":1396672122237}
+      // analog:    {"type":"analog","mode":[-1,-1,-1,-1,-1,-1,-1,-1],"state":[-1,-1,-1,-1,-1,-1,-1,-1],"_t":1396651237836}
+      //
+
+      if(data.account && data.troop == z.troop && data.scout == z.scout && data.type) {
+
+        var key = data.type
+        z.data[key] = data.value||data;
+        
+        if(key == 'digital' || key == 'analog') {
+          var offset = key == 'analog'?7:0;
+          var report = data.value;
+          
+          report.mode.forEach(function(mode,i){
+            var value = report.digital.state[i];
+            var pin = z.pins[offset+i];
+            var change = false;
+            if(mode != pin.mode) {
+              change = true;
+              pin.mode = mode;
+            } 
+
+            if(value != pin.value) {
+              change = true;
+              pin.value = value;
+            } 
+
+            if(this.isReady) {
+              z.emit(key+'-pin-'+i);
+            }
+          });
+
+          if(isReady()) {
+            z.isReady = true;
+            z.emit('ready');
+          }
+        }
+      }
+    }).on('error',function(err){
+      z.emit('error',err);
+    });
+
+  }); 
+
+  z.pins = pins.map(function(pin) {
+    return {
+      supportedModes: pin.modes,
+      mode: -1, // disabled. waiting for push from api.
+      value: 0
+    };  
+  }); 
+
+  this.analogPins = this.pins.slice(7).map(function(pin, i) {
+    return i;
+  }); 
+
 }
 
-PinoccioIO.prototype = new Emitter;
+
+util.inherits(PinoccioIO.prototype,Emitter);
+
 xtend(PinoccioIO.prototype,{
   name:"pinoccio-io",
   isReady:false,
@@ -78,36 +146,51 @@ xtend(PinoccioIO.prototype,{
   _interval:19,
   // state 
   _state:{}
-  pinMode:function(){
+  pinMode:function(pin){
 
   },
-  analogWrite:function(){
+  analogWrite:function(pin,value){
 
   },
-  digitalWrite:function(){
-
+  pinWrite:function(){
+     
   },
-  analogRead:function(pin){
-    var pin = pinnum(pin);
-    
+  digitalRead:function(pin,handler){
+    return this.pinRead(pin,handler);
   },
-  digtalRead:function(){
-
+  analogRead:function(pin,handler){
+    return this.pinRead(pin+7,handler);
+  },
+  pinRead:function(pin,handler){
+    var type = pin < 8 ?'digital':'analog';
+    this.on(type+'-pin-'+pin,handler);
+    return this;
   },
   servoWrite:function(){
     
+  },
+  _command:function(command){
+    this._api.rest({url:'/v1/'+this.troop+'/'+this.scout+'/command',{command:command}},function(){
+      
+    })
   }
 });
+
+
 
 Pinoccio.prototype.servoWrite = analogWrite;
 
 
 Pinoccio.prototype.setSamplingInterval = function(interval) {
   // This does not send a value to the board
-  var safeint = interval < 10 ?
-    10 : (interval > 65535 ? 65535 : interval);
+  // this sets the analog sampling interval.
 
-  this._interval = safeint;
+  var safeint = interval < 100 ?
+    100 : (interval > 65535 ? 65535 : interval);
+
+  // events.setCycle(ditialEvents,analogEvents,peripheral sampling interval (temp battery etc))
+
+  this._api.rest('/v1/'+this.troop+'/'+this.scout+'/command'.data:{command:"events.setCycle(50,)"}})
 
   return this;
 };
@@ -117,6 +200,7 @@ Pinoccio.prototype.reset = function() {
 };
 
 Pinoccio.prototype.close = function() {
+  if(this.sync) this.sync.end();
 };
 
 

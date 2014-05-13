@@ -16,6 +16,7 @@ var pins = [
   { id: "D6", modes: [0, 1] },
   { id: "D7", modes: [0, 1] },
   { id: "D8", modes: [0, 1] },
+
   { id: "A0", modes: [0, 1, 2] },
   { id: "A1", modes: [0, 1, 2] },
   { id: "A2", modes: [0, 1, 2] },
@@ -57,7 +58,7 @@ function PinoccioIO(opts){
   z._api.rest({url:'v1/'+opts.troop+'/'+opts.scout},function(err,data){
 
     if(err) return z.emit('error',err);
-
+    if(!data) return z.emit('error',new Error('unknown troop or scout'));
     z.sync = z._api.sync();
 
     z.data = {};// sync data object.
@@ -144,8 +145,6 @@ xtend(PinoccioIO.prototype,{
   _api:false,
   // placeholder for setSamplingInterval
   _interval:19,
-  // state 
-  _state:{}
   pinMode:function(pin){
 
   },
@@ -166,13 +165,36 @@ xtend(PinoccioIO.prototype,{
     this.on(type+'-pin-'+pin,handler);
     return this;
   },
-  servoWrite:function(){
-    
+  setSamplingInterval = function(analogInterval,digitalInterval,peripheralInterval,cb) {
+    // this sets the analog sampling interval.
+    // right now it also resets the digital and peripheral sampling intervals.
+
+    analogInterval = safeInt(analogInterval||1000);
+    digitalInterval = safeInt(digitalInterval||50,50);
+    peripheralInterval = safeInt(peripheralInterval||60000);
+
+    // events.setCycle(digtialEvents (default is 50ms),analogEvents (default is 1000ms),peripheral sampling interval (temp battery etc default 60000ms))
+    //
+    var z = this;
+    z.command("events.setCycle("+digitalInterval+","+analogInterval+","+peripheralInterval+");",function(err,data){
+      if(err) z.emit('interval-error',err)
+      if(cb) cb(err,data);
+      else console.error('error setting sampling interval. ',err);
+    });
+
+    return this;
   },
-  _command:function(command){
-    this._api.rest({url:'/v1/'+this.troop+'/'+this.scout+'/command',{command:command}},function(){
-      
-    })
+  // pinoccio only.
+  // send scout script command directly to the scout.
+  command:function(command,cb){
+    this._api.rest({url:'/v1/'+this.troop+'/'+this.scout+'/command',{command:command}},cb);
+  },
+  reset:function() {
+    // whats this supposed to do.
+    return this;
+  },
+  close:function() {
+    if(this.sync) this.sync.end();
   }
 });
 
@@ -181,27 +203,11 @@ xtend(PinoccioIO.prototype,{
 Pinoccio.prototype.servoWrite = analogWrite;
 
 
-Pinoccio.prototype.setSamplingInterval = function(interval) {
-  // This does not send a value to the board
-  // this sets the analog sampling interval.
-
-  var safeint = interval < 100 ?
-    100 : (interval > 65535 ? 65535 : interval);
-
-  // events.setCycle(ditialEvents,analogEvents,peripheral sampling interval (temp battery etc))
-
-  this._api.rest('/v1/'+this.troop+'/'+this.scout+'/command'.data:{command:"events.setCycle(50,)"}})
-
-  return this;
-};
-
-Pinoccio.prototype.reset = function() {
-  return this;
-};
-
-Pinoccio.prototype.close = function() {
-  if(this.sync) this.sync.end();
-};
+Pinoccio.prototype.
 
 
-
+function safeInt(interval,min){
+  min = min||100;
+  return interval < min ?
+    min : (interval > 65535 ? 65535 : interval);
+}

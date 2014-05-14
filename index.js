@@ -1,12 +1,10 @@
-// woo
 var pinoccio = require('pinoccio')
 var Emitter = require("events").EventEmitter;
 var util = require('util');
 var xtend = require('xtend');
-var pinnum = require('./lib/pinnum');
 
 // there are more pins but they are already connected to a bunch of cool things.
-// im not sure the right way to manage it.
+// im not sure the right way to manage it. io.led?
 // https://github.com/Pinoccio/core-pinoccio/blob/master/avr/variants/pinoccio/pins_arduino.h
 var pins = [
   { id: "D2", modes: [0, 1, 3, 4] },
@@ -16,7 +14,6 @@ var pins = [
   { id: "D6", modes: [0, 1] },
   { id: "D7", modes: [0, 1] },
   { id: "D8", modes: [0, 1] },
-
   { id: "A0", modes: [0, 1, 2] },
   { id: "A1", modes: [0, 1, 2] },
   { id: "A2", modes: [0, 1, 2] },
@@ -37,7 +34,6 @@ var modes = {
   PWM: 3,
   SERVO: 4 // todo
 };
-
 
 module.exports = PinoccioIO;
 
@@ -132,49 +128,56 @@ function PinoccioIO(opts){
 
 }
 
-
 util.inherits(PinoccioIO.prototype,Emitter);
 
 xtend(PinoccioIO.prototype,{
   name:"pinoccio-io",
   isReady:false,
   HIGH:1,
-  LOW:1,
+  LOW:0,
   pins:[],
   // handle to api.
   _api:false,
   // placeholder for setSamplingInterval
   _interval:19,
-  pinMode:function(pin){
+  pinMode:function(pin,mode){
 
-  },
-  analogWrite:function(pin,value){
+    var p = pinType(pin,'digital');
+    this.pins[p.i].mode = mode;
 
-  },
-  pinWrite:function(){
-     
-  },
-  digitalRead:function(pin,handler){
-    return this.pinRead(pin,handler);
-  },
-  analogRead:function(pin,handler){
-    return this.pinRead(pin+7,handler);
-  },
-  pinRead:function(pin,handler){
-    var type = pin < 8 ?'digital':'analog';
-    this.on(type+'-pin-'+pin,handler);
+    this.command('pin.setmode('+p.pin+','+mode+')',function(err){
+      if(err) console.log('pin setmode error ',p.pin,mode,err);
+    });
+
     return this;
   },
-  setSamplingInterval = function(analogInterval,digitalInterval,peripheralInterval,cb) {
+  digitalWrite:function(pin,value){
+    var p = pinType(pin,'digital');
+    return this._pinWrite(p,value);
+  },
+  analogWrite:function(pin,value){
+    var p = pinType(pin,'analog');
+    // based on http://arduino.cc/en/Reference/AnalogWrite shouldn't the pin default to digital?
+    // just copying the default behavior from spark-io. TODO check j5 examples
+    return this._pinWrite(p,value);
+  },
+  digitalRead:function(pin,handler){
+    var p = pinType(pin,'digital');
+    return this._pinRead(p,handler);
+  },
+  analogRead:function(pin,handler){
+    var p = pinType(pin,'analog');
+    return this._pinRead(p,handler);
+  },
+  setSamplingInterval:function(analogInterval,digitalInterval,peripheralInterval,cb) {
     // this sets the analog sampling interval.
     // right now it also resets the digital and peripheral sampling intervals.
-
     analogInterval = safeInt(analogInterval||1000);
     digitalInterval = safeInt(digitalInterval||50,50);
     peripheralInterval = safeInt(peripheralInterval||60000);
 
+    // polling reporting interval.
     // events.setCycle(digtialEvents (default is 50ms),analogEvents (default is 1000ms),peripheral sampling interval (temp battery etc default 60000ms))
-    //
     var z = this;
     z.command("events.setCycle("+digitalInterval+","+analogInterval+","+peripheralInterval+");",function(err,data){
       if(err) z.emit('interval-error',err)
@@ -184,30 +187,57 @@ xtend(PinoccioIO.prototype,{
 
     return this;
   },
-  // pinoccio only.
-  // send scout script command directly to the scout.
-  command:function(command,cb){
-    this._api.rest({url:'/v1/'+this.troop+'/'+this.scout+'/command',{command:command}},cb);
-  },
   reset:function() {
     // whats this supposed to do.
     return this;
   },
   close:function() {
     if(this.sync) this.sync.end();
-  }
+    // it seems like i should do these things
+    //this.isReady = false;
+    //this.emit('close');
+  },
+  _pinWrite:function(data,value){
+
+    value = +value;
+    if(isNaN(value)) return false;
+    this.command('pin.write("'+data.pin+'",'+value+')',function(err){
+      if(err) console.error('error writing pin ',data,value,err);
+    }); 
+      
+  },
+  _pinRead:function(data,handler){
+    // expect pin as string
+    this.on(data.type+'-pin-'+data.i,handler);
+    return this;
+  },
+  // pinoccio only.
+  // send scout script command directly to the scout.
+  command:function(command,cb){
+    this._api.rest({url:'/v1/'+this.troop+'/'+this.scout+'/command',data:{command:command}},cb);
+  },
 });
 
+PinoccioIO.prototype.servoWrite = PinoccioIO.prototype.analogWrite;
 
-
-Pinoccio.prototype.servoWrite = analogWrite;
-
-
-Pinoccio.prototype.
-
-
-function safeInt(interval,min){
+function safeInt(interval,min,max){
   min = min||100;
+  max = max||65535;
   return interval < min ?
-    min : (interval > 65535 ? 65535 : interval);
+    min : (interval > max ? max : interval);
+}
+
+function pinType(pin,type){
+  var t = type == 'analog'?'A':'D';
+  if(typeof pin == 'number'){
+    if(pin >= 7){
+      t = 'A';
+      pin -= 7;
+    }
+    pin = t+pin;
+  }
+
+  pinInt = (pin.replace(/A|D/i, "") | 0) + (t == 'a' ? 7 : 0);
+
+  return {pin:pin,type:t,i:pinInt};
 }

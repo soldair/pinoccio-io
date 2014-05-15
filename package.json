@@ -1,6 +1,6 @@
 {
   "name": "pinoccio-io",
-  "description": "johnny five io plugin for pinoccio",
+  "description": "johnny five io plugin for pinoccio boards! https://pinocc.io",
   "version": "0.0.1",
   "repository": {
     "url": "git://github.com/soldair/pinoccio-io.git"

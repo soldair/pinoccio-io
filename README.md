@@ -45,9 +45,23 @@ var board = new five.Board({
 });
 
 board.on("ready", function() {
-  var led = new five.Led("D7");
+  var led = new five.Led("D5");
   led.blink(500);
 });
 ```
+
+API
+---
+
+todo. =) 
+
+- pinMode
+- digitalWrite
+- analogWrite
+- digitalRead
+- analogRead
+- setSamplingInterval
+
+
 
 

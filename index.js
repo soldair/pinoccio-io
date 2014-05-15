@@ -72,6 +72,8 @@ function PinoccioIO(opts){
       return !z.isReady && (z.data.available && z.data.available.available) && z.data.digital && z.data.analog;
     };
 
+    z.emit('connect');
+
     z.sync.on('data',function(data){
       // i care about 3 api events
       //
@@ -113,6 +115,7 @@ function PinoccioIO(opts){
 
           if(isReady()) {
             z.isReady = true;
+
             z.emit('ready');
           }
         }
@@ -128,7 +131,9 @@ function PinoccioIO(opts){
       id:pin.id,
       supportedModes: pin.modes,
       mode: -1, // disabled. waiting for push from api.
-      value: 0
+      value: 0,
+      report:1,// all pins report
+      analogChannel:i>=9?i-9:127
     };  
   }); 
 

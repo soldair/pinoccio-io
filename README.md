@@ -3,7 +3,12 @@ pinoccio-io
 
 johnny five io plugin for pinoccio!
 
-thanks to @rwaldron for johnny-five and io plugins like spark-io 
+[![Build Status](https://pinocc.io/images/pinoccio-logo-mini.png)](https://pinocc.io)
+
+thanks to @rwaldron for johnny-five and io plugins which served as example.
+
+to find out about https://pinocc.io 
+ 
 
 ### Blink an Led
 
@@ -38,9 +43,10 @@ pinoccio-io can be used as an [IO Plugin](https://github.com/rwaldron/johnny-fiv
 var five = require("johnny-five");
 var Pinoccio = require("pinoccio-io");
 var board = new five.Board({
-  io: new Spark({
+  io: new Pinoccio({
     token: "{{yours}}",
-    
+    troop: "{{yours}}",
+    scout: "{{yours}}"   
   })
 });
 

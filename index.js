@@ -58,23 +58,33 @@ function PinoccioIO(opts){
 
   z._api.rest({url:'v1/'+opts.troop+'/'+opts.scout},function(err,data){
 
+
     if(err) return z.emit('error',err);
     if(!data) return z.emit('error',new Error('unknown troop or scout'));
 
 
-    z.sync = z._api.sync();
+    z.sync = z._api.sync({stale:1});
+
+    // make sure we get a fresh pin report. edge cvase where a report may be missing.
+    z.command("pin.digital.report;pin.analog.report;",function(err,res){
+      if(err) console.error('error sending pin report command');
+    })
 
     z.data = {};// sync data object.
 
     // board is ready after i get  available && digital && analog events.
     // TODO FIND GREAT Way to message when a scout may be off / unavailable 
     var isReady = function(){
-      return !z.isReady && (z.data.available && z.data.available.available) && z.data.digital && z.data.analog;
+      return !z.isReady && (z.data.available && z.data.available.available) && z.data.digital && z.data.analog; 
     };
 
     z.emit('connect');
 
+    var delay;
+  
     z.sync.on('data',function(data){
+
+
       // i care about 3 api events
       //
       // available: {"scout":1,"available":1,"reply":"11\n","_t":1399594464252,"type":"available"}
@@ -84,6 +94,8 @@ function PinoccioIO(opts){
       data = data.data;
       
       if(data.account && data.troop == z.troop && data.scout == z.scout && data.type) {
+
+        clearTimeout(delay);
 
         var key = data.type
         z.data[key] = data.value||data;
@@ -113,12 +125,14 @@ function PinoccioIO(opts){
             }
           });
 
-          if(isReady()) {
-            z.isReady = true;
-
-            z.emit('ready');
-          }
         }
+
+        if(isReady()) {
+          // completely ready...
+          z.isReady = true;
+          z.emit('ready');
+        }
+
       }
     }).on('error',function(err){
       z.emit('error',err);
@@ -157,9 +171,15 @@ mix(PinoccioIO.prototype,{
   _api:false,
   // placeholder for setSamplingInterval
   _interval:19,
+  defaultLed:'@led',
   pinMode:function(pin,mode){
 
     var p = pinType(pin,'digital');
+
+    // short circuit for psuedo pins 
+    if(p.type === '@') return this;
+
+    if(!this.pins[p.i]) return false;// throw?
 
     if(this.pins[p.i].mode === mode) return this;
 
@@ -172,21 +192,40 @@ mix(PinoccioIO.prototype,{
     return this;
   },
   digitalWrite:function(pin,value){
+    
     var p = pinType(pin,'digital');
+
+    if(p.type === '@') {
+      if(p.pin === '@led'){
+        this.command('led.'+(value == this.LOW?'on':'off'),function(err){
+          if(err) console.error('error setting led');
+        }) 
+      }
+      return this;
+    }
+
     return this._pinWrite(p,value);
   },
   analogWrite:function(pin,value){
+
     var p = pinType(pin,'analog');
+    if(p.type === '@') return this;
     // based on http://arduino.cc/en/Reference/AnalogWrite shouldn't the pin default to digital?
     // just copying the default behavior from spark-io. TODO check j5 examples
     return this._pinWrite(p,value);
   },
   digitalRead:function(pin,handler){
+
     var p = pinType(pin,'digital');
+    if(p.type === '@') return this;
+
     return this._pinRead(p,handler);
   },
   analogRead:function(pin,handler){
+
     var p = pinType(pin,'analog');
+    if(p.type === '@') return this;
+
     return this._pinRead(p,handler);
   },
   setSamplingInterval:function(analogInterval,digitalInterval,peripheralInterval,cb) {
@@ -217,6 +256,11 @@ mix(PinoccioIO.prototype,{
     //this.isReady = false;
     //this.emit('close');
   },
+  // its kinda a noop right now. just return the pin int which gets changed into the pin str again before being added to scout script
+  // add normalize re https://github.com/rwaldron/johnny-five/issues/345
+  normalize:function(pin){
+    return pinType(pin).i;
+  },
   _pinWrite:function(data,value){
 
     value = +value;
@@ -228,7 +272,6 @@ mix(PinoccioIO.prototype,{
   },
   _pinRead:function(data,handler){
     // expect pin as string
-    console.log('adding event handler',data.name+'-pin-'+data.i);
     this.on(data.name+'-pin-'+data.i,handler);
     return this;
   },
@@ -252,6 +295,7 @@ function safeInt(interval,min,max){
 }
 
 function pinType(pin,type){
+
   var t = type == 'analog'?'a':'d';
   if(typeof pin == 'number'){
     if(pin >= 9){
@@ -259,6 +303,11 @@ function pinType(pin,type){
       pin -= 9;
     }
     pin = t+pin;
+  }
+
+  if(pin.indexOf('@') == 0){
+    //special @led etc
+    return {pin:pin.toLowerCase(),type:'@',i:-1};
   }
 
   pinInt = (pin.replace(/A|D/i, "") | 0) + (t == 'a' ? 9 : 0);

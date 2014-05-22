@@ -1,5 +1,5 @@
 var test = require('tape');
-var Pinoccio = require('../');
+var Pinoccio = require('./');
 var five = require('johnny-five')
 
 console.log('hi');
@@ -15,7 +15,7 @@ var board = new five.Board({
 
 board.on("ready", function() {
   console.log('ready!');
-  var led = new five.Led("D5");
+  var led = new five.Led();
   led.blink(200);
 });
 

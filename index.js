@@ -28,17 +28,28 @@ var pins = [
 // 
 //                 -2           -1         0        1         2       3
 //var pinModes = ['reserved', 'disabled', 'float', 'output', 'input', 'pwm'];
-var modes = {
+
+var publicModes = {
+  INPUT: 0,
+  OUTPUT: 1,
+  ANALOG: 2,
+  PWM: 3,
+  SERVO: 4
+}
+
+var internalModes = {
   RESERVED:-2, // pinoccio
   DISABLED:-1, // pinoccio 
   FLOAT:0, // pinoccio 
   INPUT: 2,
   OUTPUT: 1,
-  // im not sure about this here. in spark-io he expects 2 saves 2 to the pins array as the mode for the pin but passes 0 to the board 
   ANALOG:0, 
   PWM: 3,
   SERVO: 4 // todo
 };
+
+var modeMap = translate(publicModes,internalModes) 
+var internalModeMap = translate(internalModes,publicModes) 
 
 module.exports = PinoccioIO;
 
@@ -58,16 +69,15 @@ function PinoccioIO(opts){
 
   z._api.rest({url:'v1/'+opts.troop+'/'+opts.scout},function(err,data){
 
-
     if(err) return z.emit('error',err);
     if(!data) return z.emit('error',new Error('unknown troop or scout'));
 
 
     z.sync = z._api.sync({stale:1});
 
-    // make sure we get a fresh pin report. edge cvase where a report may be missing.
+    // make sure we get a fresh pin report. edge case where a report may be missing.
     z.command("pin.digital.report;pin.analog.report;",function(err,res){
-      if(err) console.error('error sending pin report command');
+      if(err) console.error('error sending pin report command ',err);
     })
 
     z.data = {};// sync data object.
@@ -83,7 +93,6 @@ function PinoccioIO(opts){
     var delay;
   
     z.sync.on('data',function(data){
-
 
       // i care about 3 api events
       //
@@ -105,11 +114,18 @@ function PinoccioIO(opts){
           var report = data.value;
           var skew = key == 'digital'?2:0;
 
+          console.log('report',report);
+
+
           report.mode.forEach(function(mode,i){
             
+            // mode may be undefined if the pin becomes disabled because this is not a state understood by the j5 interface
+            mode = internalModeMap[mode];//
+
             var value = report.state[i];
             var pin = z.pins[offset+i];
             var change = false;
+
             if(mode != pin.mode) {
               change = true;
               pin.mode = mode;
@@ -165,7 +181,7 @@ mix(PinoccioIO.prototype,{
   isReady:false,
   HIGH:1,
   LOW:0,
-  MODES:modes,
+  MODES:publicModes,
   pins:[],
   // handle to api.
   _api:false,
@@ -184,6 +200,8 @@ mix(PinoccioIO.prototype,{
     if(this.pins[p.i].mode === mode) return this;
 
     this.pins[p.i].mode = mode;
+
+    mode = modeMap[mode];
 
     this.command('pin.setmode("'+p.pin+'",'+mode+')',function(err){
       if(err) console.log('pin setmode error ',p.pin,mode,err);
@@ -320,4 +338,12 @@ function mix(o1,o2){
   for(var i in o2){
     if(o2.hasOwnProperty(i)) o1[i] = o2[i];
   }
+}
+
+function translate(o,o2){
+  var out = {};
+  Object.keys(o).forEach(function(k){
+    out[o[k]] = o2[k];
+  });
+  return out;
 }

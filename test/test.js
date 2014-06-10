@@ -1,7 +1,7 @@
 var test = require('tape');
 var Pinoccio = require('../');
 
-test("can use board",function(){
+test("can use board",function(t){
 
   var board = new Pinoccio({
     token: "71933a35bd8fa564be3096bcdb815061", // todo integrate other tokens.

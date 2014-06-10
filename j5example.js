@@ -2,13 +2,17 @@ var test = require('tape');
 var Pinoccio = require('./');
 var five = require('johnny-five')
 
+var config = JSON.parse(require('fs').readFileSync(process.env.HOME+'/.pinoccio'));
+
+console.log(config);
+
 console.log('hi');
 
 var board = new five.Board({
   io: Pinoccio({
-    token: "71933a35bd8fa564be3096bcdb815061", // todo integrate other tokens.
+    token: config.token, // todo integrate other tokens.
     troop:2,
-    scout:1,
+    scout:2,
     api:'https://localhost:8003'
   })
 });

@@ -69,8 +69,15 @@ function PinoccioIO(opts){
 
   z._api.rest({url:'v1/'+opts.troop+'/'+opts.scout},function(err,data){
 
-    if(err) return z.emit('error',err);
-    if(!data) return z.emit('error',new Error('unknown troop or scout'));
+    if(err) {
+      console.error(err);
+      return z.emit('error',err);
+    }
+
+    if(!data) {
+      console.error(err);
+      return z.emit('error',new Error('unknown troop or scout'));
+    }
 
 
     z.sync = z._api.sync({stale:1});
@@ -114,8 +121,7 @@ function PinoccioIO(opts){
           var report = data.value;
           var skew = key == 'digital'?2:0;
 
-          console.log('report',report);
-
+          //console.log('report',report);
 
           report.mode.forEach(function(mode,i){
             
@@ -137,7 +143,7 @@ function PinoccioIO(opts){
             } 
 
             if(z.isReady && change) {
-              z.emit(key+'-pin-'+(i+offset));
+              z.emit(key+'-pin-'+(i+offset),value);
             }
           });
 
